@@ -171,6 +171,7 @@ class DefaultSettings(ConfigBase):
     scan_subdomains = False
     selected_modules = None
     url_base_path = None
+    target_url_base_paths = None
     http_header = None
     read_from_file = ""
     set_hardware_usage = "maximum"  # low, normal, high, maximum

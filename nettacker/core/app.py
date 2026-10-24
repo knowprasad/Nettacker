@@ -122,24 +122,22 @@ class Nettacker(ArgParser):
         Returns:
             a generator
         """
+        from urllib.parse import urlsplit
+
         targets = []
         base_path = ""
+        target_base_paths = {}
         for target in self.arguments.targets:
             if "://" in target:
-                try:
-                    if not target.split("://")[1].split("/")[1]:
-                        base_path = ""
-                    else:
-                        base_path = "/".join(target.split("://")[1].split("/")[1:])
-                        if base_path[-1] != "/":
-                            base_path += "/"
-                except IndexError:
-                    base_path = ""
-                # remove url proto; uri; port
-                target = target.split("://")[1].split("/")[0].split(":")[0]
-                targets.append(target)
+                parsed = urlsplit(target)
+                host = parsed.hostname or target.split("://")[1].split("/")[0].split(":")[0]
+                raw_path = parsed.path.strip("/")
+                base_path = f"{raw_path}/" if raw_path else ""
+                targets.append(host)
+                target_base_paths[host] = base_path
             # single IPs
             elif is_single_ipv4(target) or is_single_ipv6(target):
+                target_base_paths[target] = ""
                 if self.arguments.scan_ip_range:
                     targets += get_ip_range(target)
                 else:
@@ -151,12 +149,18 @@ class Nettacker(ArgParser):
                 or is_ipv4_cidr(target)
                 or is_ipv6_cidr(target)
             ):
+                target_base_paths[target] = ""
                 targets += generate_ip_range(target)
             # domains probably
             else:
+                target_base_paths[target] = ""
                 targets.append(target)
         self.arguments.targets = targets
-        self.arguments.url_base_path = base_path
+        unique_base_paths = set(target_base_paths.values())
+        self.arguments.url_base_path = (
+            unique_base_paths.pop() if len(unique_base_paths) == 1 else ""
+        )
+        self.arguments.target_url_base_paths = target_base_paths
 
         # subdomain_scan
         if self.arguments.scan_subdomains:
@@ -289,6 +293,11 @@ class Nettacker(ArgParser):
             and Thread discards its target's return value)
         """
         options = copy.deepcopy(self.arguments)
+        if (
+            getattr(options, "target_url_base_paths", None)
+            and target in options.target_url_base_paths
+        ):
+            options.url_base_path = options.target_url_base_paths[target]
 
         socket.socket, socket.getaddrinfo = set_socks_proxy(options.socks_proxy)
         module = Module(
